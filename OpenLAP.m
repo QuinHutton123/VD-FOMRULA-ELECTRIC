@@ -334,65 +334,68 @@ function [sim] = simulate(veh,tr,simname,logid)
                     mode = -1 ;
                     k_rest = 1 ;
             end
-            if ~(strcmp(tr.info.config,'Open') && mode==-1 && i==1) % does not run in decel mode at standing start in open track
+
+            if (strcmp(tr.info.config,'Open') && mode==-1 && i==1) % does not run in decel mode at standing start in open track
                 % getting other apex for later checking
-                [i_rest] = other_points(i,N) ;
-                if isempty(i_rest)
-                    i_rest = i ;
+                continue
+            end
+
+            [i_rest] = other_points(i,N) ;
+            if isempty(i_rest)
+                i_rest = i ;
+            end
+            % getting apex index
+            j = uint32(apex(i)) ;
+            % saving speed & latacc & driver inputs from presolved apex
+            v(j,i,k) = v_apex(i) ;
+            ay(j,i,k) = v_apex(i)^2*tr.r(j) ;
+            tps(j,:,1) = tps_apex(i)*ones(1,N) ;
+            bps(j,:,1) = bps_apex(i)*ones(1,N) ;
+            tps(j,:,2) = tps_apex(i)*ones(1,N) ;
+            bps(j,:,2) = bps_apex(i)*ones(1,N) ;
+            % setting apex flag
+            flag(j,k) = true ;
+            % getting next point index
+            [~,j_next] = next_point(j,tr.n,mode,tr.info.config) ;
+            if ~(strcmp(tr.info.config,'Open') && mode==1 && i==1) % if not in standing start
+                % assuming same speed right after apex
+                v(j_next,i,k) = v(j,i,k) ;
+                % moving to next point index
+                [j_next,j] = next_point(j,tr.n,mode,tr.info.config) ;
+            end
+            while 1
+                % writing to log file
+                fprintf(logid,'%7d\t%7d\t%7d\t%7.1f\t%7.2f\t%7.2f\n',i,j,k,tr.x(j),v(j,i,k),v_max(j)) ;
+                % calculating speed, accelerations and driver inputs from vehicle model
+                [v(j_next,i,k),ax(j,i,k),ay(j,i,k),tps(j,i,k),bps(j,i,k),overshoot] = vehicle_model_comb(veh,tr,v(j,i,k),v_max(j_next),j,mode) ;
+                % checking for limit
+                if overshoot
+                    break
                 end
-                % getting apex index
-                j = uint32(apex(i)) ;
-                % saving speed & latacc & driver inputs from presolved apex
-                v(j,i,k) = v_apex(i) ;
-                ay(j,i,k) = v_apex(i)^2*tr.r(j) ;
-                tps(j,:,1) = tps_apex(i)*ones(1,N) ;
-                bps(j,:,1) = bps_apex(i)*ones(1,N) ;
-                tps(j,:,2) = tps_apex(i)*ones(1,N) ;
-                bps(j,:,2) = bps_apex(i)*ones(1,N) ;
-                % setting apex flag
-                flag(j,k) = true ;
-                % getting next point index
-                [~,j_next] = next_point(j,tr.n,mode,tr.info.config) ;
-                if ~(strcmp(tr.info.config,'Open') && mode==1 && i==1) % if not in standing start
-                    % assuming same speed right after apex
-                    v(j_next,i,k) = v(j,i,k) ;
-                    % moving to next point index
-                    [j_next,j] = next_point(j,tr.n,mode,tr.info.config) ;
-                end
-                while 1
-                    % writing to log file
-                    fprintf(logid,'%7d\t%7d\t%7d\t%7.1f\t%7.2f\t%7.2f\n',i,j,k,tr.x(j),v(j,i,k),v_max(j)) ;
-                    % calculating speed, accelerations and driver inputs from vehicle model
-                    [v(j_next,i,k),ax(j,i,k),ay(j,i,k),tps(j,i,k),bps(j,i,k),overshoot] = vehicle_model_comb(veh,tr,v(j,i,k),v_max(j_next),j,mode) ;
-                    % checking for limit
-                    if overshoot
+                % checking if point is already solved in other apex iteration
+                if flag(j,k) || flag(j,k_rest)
+                    if max(v(j_next,i,k)>=v(j_next,i_rest,k)) || max(v(j_next,i,k)>v(j_next,i_rest,k_rest))
                         break
                     end
-                    % checking if point is already solved in other apex iteration
-                    if flag(j,k) || flag(j,k_rest)
-                        if max(v(j_next,i,k)>=v(j_next,i_rest,k)) || max(v(j_next,i,k)>v(j_next,i_rest,k_rest))
+                end
+                % updating flag and grogress bar
+                flag = flag_update(flag,j,k,prg_size,logid,prg_pos) ;
+                % moving to next point index
+                [j_next,j] = next_point(j,tr.n,mode,tr.info.config) ;
+                % checking if lap is completed
+                switch tr.info.config
+                    case 'Closed'
+                        if j==apex(i) % made it to the same apex
                             break
                         end
-                    end
-                    % updating flag and grogress bar
-                    flag = flag_update(flag,j,k,prg_size,logid,prg_pos) ;
-                    % moving to next point index
-                    [j_next,j] = next_point(j,tr.n,mode,tr.info.config) ;
-                    % checking if lap is completed
-                    switch tr.info.config
-                        case 'Closed'
-                            if j==apex(i) % made it to the same apex
-                                break
-                            end
-                        case 'Open'
-                            if j==tr.n % made it to the end
-                                flag = flag_update(flag,j,k,prg_size,logid,prg_pos) ;
-                                break
-                            end
-                            if j==1 % made it to the start
-                                break
-                            end
-                    end
+                    case 'Open'
+                        if j==tr.n % made it to the end
+                            flag = flag_update(flag,j,k,prg_size,logid,prg_pos) ;
+                            break
+                        end
+                        if j==1 % made it to the start
+                            break
+                        end
                 end
             end
         end

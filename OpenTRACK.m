@@ -415,7 +415,7 @@ bank = interp1(xb,bk,x,'linear','extrap') ;
 incl = -atand((diff(Z)./diff(x))) ;
 incl = [incl;incl(end)] ;
 % grip factor
-factor_grip = interp1(xg,gf,x,'linear','extrap') ;
+factor_grip = interp1(xg,gf,x,'previous','extrap') ;
 % sector
 sector = interp1(xs,sc,x,'previous','extrap') ;
 % HUD
@@ -434,7 +434,7 @@ if strcmp(info.config,'Closed') % tangency correction for closed track
     dh = [...
         mod(angle_head(end),sign(angle_head(end))*360);...
         angle_head(end)-sign(angle_head(end))*360....
-        ] ;
+        ] ; 
     [~,idx] = min(abs(dh)) ;
     dh = dh(idx) ;
     angle_head = angle_head-x/L*dh ;
