@@ -2,6 +2,11 @@
 %
 % OpenLAP
 %
+
+
+%% TEST 1
+
+
 % Lap time simulation using a simple point mass model for a racing vehicle.
 % Instructions:
 % 1) Select a vehicle file created by OpenVEHICLE by assigning the full
