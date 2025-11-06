@@ -39,7 +39,18 @@ fclose('all') ;
 
 %% Vehicle file selection
 
-filename = 'Formula 1.xlsx' ;
+% Open a file selection dialog
+[fn, fp] = uigetfile({'*.xlsx','Excel Files (*.xlsx)'; '*.*','All Files'}, ...
+                     'Select vehicle Excel file');
+
+% Check if the user clicked Cancel
+if isequal(fn,0)
+    error('No file selected');
+end
+
+% Build full file name
+filename = fullfile(fp, fn);
+
 
 %% Reading vehicle file
 
