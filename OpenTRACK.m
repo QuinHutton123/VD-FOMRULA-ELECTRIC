@@ -57,15 +57,21 @@ diary('off')
 fclose('all') ;
 
 %% Track file selection
+% Open a file selection dialog to choose the track data file
+[fn, fp] = uigetfile({'*.csv','CSV Files (*.csv)'; '*.xlsx','Excel Files (*.xlsx)'; '*.*','All Files (*.*)'}, ...
+                     'Select Track Data File');
 
-% filename = 'Paul Ricard data.csv' ;
-% filename = 'Spa-Francorchamps.xlsx' ;
-% filename = 'Monza Data.csv' ;
-% filename = 'OpenTRACK Laguna Seca Data.csv' ;
-% filename = 'OpenTRACK Paul Ricard Data.csv' ;
-filename = 'OpenTRACK_FSAE_UK_Endurance_2015.xlsx' ;
-% filename = 'OpenTRACK KZ2 Kart Data - Rhodes.csv' ;
-% filename = 'OpenTRACK KZ2 Kart Data - Athens.csv' ;
+% Check if the user clicked Cancel
+if isequal(fn,0) || isequal(fp,0)
+    disp('File selection cancelled. Exiting script.');
+    return;
+end
+
+% Build the full file path
+filename = fullfile(fp, fn);
+
+% Display the selected file
+disp(['Selected file: ', filename]);
 
 %% Mode selection
 

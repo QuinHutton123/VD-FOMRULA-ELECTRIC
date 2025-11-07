@@ -2,11 +2,7 @@
 %
 % OpenLAP
 %
-
-
 %% TEST 1
-
-
 % Lap time simulation using a simple point mass model for a racing vehicle.
 % Instructions:
 % 1) Select a vehicle file created by OpenVEHICLE by assigning the full
@@ -38,38 +34,41 @@
 % GitHub: https://github.com/mc12027
 %
 % April 2020.
-
 %% Clearing memory
-
 clear
 clc
 close all force
 diary('off')
 fclose('all') ;
-
 %% Starting timer
-
 tic
-
 %% Filenames
 
-trackfile = 'OpenTRACK Tracks/OpenTRACK_Spa-Francorchamps_Closed_Forward.mat' ;
-vehiclefile = 'OpenVEHICLE Vehicles/OpenVEHICLE_Formula 1_Open Wheel.mat' ;
+% --- START: UI TO GET FILE INPUTS ---
+disp('Choose Track')
+[track_file, track_path] = uigetfile('*.mat', 'Select the Track File (OpenTRACK)');
+if isequal(track_file, 0) || isequal(track_path, 0)
+    disp('File selection cancelled. Exiting.');
+    return; % Exit the script
+end
+trackfile = fullfile(track_path, track_file);
+
+disp('Choose Vehcile')
+[vehicle_file, vehicle_path] = uigetfile('*.mat', 'Select the Vehicle File (OpenVEHICLE)');
+if isequal(vehicle_file, 0) || isequal(vehicle_path, 0)
+    disp('File selection cancelled. Exiting.');
+    return; % Exit the script
+end
+vehiclefile = fullfile(vehicle_path, vehicle_file);
+% --- END: UI TO GET FILE INPUTS ---
 
 %% Loading circuit
-
 tr = load(trackfile) ;
-
 %% Loading car
-
 veh = load(vehiclefile) ;
-
 %% Export frequency
-
 freq = 50 ; % [Hz]
-
 %% Simulation name
-
 use_date_time_in_name = false ;
 if use_date_time_in_name
     date_time = "_"+datestr(now,'yyyy_mm_dd')+"_"+datestr(now,'HH_MM_SS') ; %#ok<UNRCH>
@@ -78,9 +77,7 @@ else
 end
 simname = "OpenLAP Sims/OpenLAP_"+char(veh.name)+"_"+tr.info.name+date_time ;
 logfile = simname+".log" ;
-
 %% HUD
-
 [folder_status,folder_msg] = mkdir('OpenLAP Sims') ;
 delete(simname+".log") ;
 logid = fopen(logfile,'w') ;
@@ -97,13 +94,9 @@ fprintf(logid,'%s\n',"Track:   "+tr.info.name) ;
 fprintf(logid,'%s\n',"Date:    "+datestr(now,'dd/mm/yyyy')) ;
 fprintf(logid,'%s\n',"Time:    "+datestr(now,'HH:MM:SS')) ;
 fprintf(logid,'%s\n','=================================================') ;
-
 %% Lap Simulation
-
 [sim] = simulate(veh,tr,simname,logid) ;
-
 %% Displaying laptime
-
 disp(['Laptime:  ',num2str(sim.laptime.data,'%3.3f'),' [s]'])
 fprintf(logid,'%s','Laptime   : ') ;
 fprintf(logid,'%7.3f',sim.laptime.data) ;
@@ -116,9 +109,7 @@ for i=1:max(tr.sector)
     fprintf(logid,'%7.3f',sim.sector_time.data(i)) ;
     fprintf(logid,'%s\n',' [s]') ;
 end
-
 %% Ploting results
-
 % figure window
 set(0,'units','pixels') ;
 SS = get(0,'screensize') ;
@@ -129,7 +120,6 @@ Ypos = floor((SS(4)-H)/2) ;
 f = figure('Name','OpenLAP Simulation Results','Position',[Xpos,Ypos,W,H]) ;
 figname = ["OpenLAP: "+char(veh.name)+" @ "+tr.info.name,"Date & Time: "+datestr(now,'yyyy/mm/dd')+" "+datestr(now,'HH:MM:SS')] ;
 sgtitle(figname)
-
 % setting rows & columns
 rows = 7 ;
 cols = 2 ;
@@ -138,7 +128,6 @@ xlimit = [tr.x(1),tr.x(end)] ;
 % xlimit = [4000,4500] ;
 % setting legend location
 loc = 'east' ;
-
 % speed
 subplot(rows,cols,[1,2])
 hold on
@@ -149,7 +138,6 @@ xlim(xlimit)
 ylabel('Speed [m/s]')
 ylabel('Speed [km/h]')
 grid on
-
 % elevation and curvature
 subplot(rows,cols,[3,4])
 yyaxis left
@@ -162,7 +150,6 @@ yyaxis right
 plot(tr.x,tr.r)
 legend({'Elevation','Curvature'},'Location',loc)
 ylabel('Curvature [m^-^1]')
-
 % accelerations
 subplot(rows,cols,[5,6])
 hold on
@@ -174,7 +161,6 @@ xlabel('Distance [m]')
 xlim(xlimit)
 ylabel('Acceleration [m/s^2]')
 grid on
-
 % drive inputs
 subplot(rows,cols,[7,8])
 hold on
@@ -186,7 +172,6 @@ xlim(xlimit)
 ylabel('input [%]')
 grid on
 ylim([-10,110])
-
 % steering inputs
 subplot(rows,cols,[9,10])
 hold on
@@ -198,7 +183,6 @@ xlabel('Distance [m]')
 xlim(xlimit)
 ylabel('angle [deg]')
 grid on
-
 % ggv circle
 subplot(rows,cols,[11,13])
 hold on
@@ -211,7 +195,6 @@ zlabel('Speed [km/h]')
 grid on
 set(gca,'DataAspectRatio',[1 1 3])
 axis tight
-
 % track map
 subplot(rows,cols,[12,14])
 hold on
@@ -223,16 +206,12 @@ ylabel('Y [m]')
 colorbar
 grid on
 axis equal
-
 % saving figure
 savefig(simname+".fig")
-
 % HUD
 disp('Plots created and saved.')
 fprintf(logid,'%s\n','Plots created and saved.') ;
-
 %% Report generation
-
 % csv report generation
 export_report(veh,tr,sim,freq,logid) ;
 % saving .mat file
@@ -243,9 +222,7 @@ fprintf(logid,'%s','Elapsed time is: ') ;
 fprintf(logid,'%f',toc) ;
 fprintf(logid,'%s\n',' [s]') ;
 fclose('all') ;
-
 %% Functions
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [sim] = simulate(veh,tr,simname,logid)
     
@@ -498,18 +475,26 @@ function [sim] = simulate(veh,tr,simname,logid)
     fprintf(logid,'%s\n','Steering angles calculated.') ;
     fprintf(logid,'%s\n','Vehicle slip angles calculated.') ;
     
+    % --- START: REMOVED ENGINE/GEARING METRICS ---
     % calculating engine metrics
-    wheel_torque = TPS.*interp1(veh.vehicle_speed,veh.wheel_torque,V,'linear','extrap') ;
-    Fx_eng = wheel_torque/veh.tyre_radius ;
-    engine_torque = TPS.*interp1(veh.vehicle_speed,veh.engine_torque,V,'linear','extrap') ;
-    engine_power = TPS.*interp1(veh.vehicle_speed,veh.engine_power,V,'linear','extrap') ;
-    engine_speed = interp1(veh.vehicle_speed,veh.engine_speed,V,'linear','extrap') ;
-    gear = interp1(veh.vehicle_speed,veh.gear,V,'nearest','extrap') ;
-    fuel_cons = cumsum(wheel_torque/veh.tyre_radius.*tr.dx/veh.n_primary/veh.n_gearbox/veh.n_final/veh.n_thermal/veh.fuel_LHV) ;
-    fuel_cons_total = fuel_cons(end) ;
+%     wheel_torque = TPS.*interp1(veh.vehicle_speed,veh.wheel_torque,V,'linear','extrap') ;
+%     Fx_eng = wheel_torque/veh.tyre_radius ;
+%     engine_torque = TPS.*interp1(veh.vehicle_speed,veh.engine_torque,V,'linear','extrap') ;
+%     engine_power = TPS.*interp1(veh.vehicle_speed,veh.engine_power,V,'linear','extrap') ;
+%     engine_speed = interp1(veh.vehicle_speed,veh.engine_speed,V,'linear','extrap') ;
+%     gear = interp1(veh.vehicle_speed,veh.gear,V,'nearest','extrap') ;
+%     fuel_cons = cumsum(wheel_torque/veh.tyre_radius.*tr.dx/veh.n_primary/veh.n_gearbox/veh.n_final/veh.n_thermal/veh.fuel_LHV) ;
+%     fuel_cons_total = fuel_cons(end) ;
+    
+    % Set Fx_eng to zero (or a non-existent value) for logging if needed, 
+    % but it's better to remove it from results. We will set it to zero
+    % in case any other code (that we haven't seen) relies on it.
+    % We will also remove it from the 'sim' structure below.
+    Fx_eng = zeros(tr.n,1); 
+    
     % HUD
-    disp('Engine metrics calculated.')
-    fprintf(logid,'%s\n','Engine metrics calculated.') ;
+    disp('Engine metrics calculation skipped.')
+    fprintf(logid,'%s\n','Engine metrics calculation skipped.') ;
     
     % calculating kpis
     percent_in_corners = sum(tr.r~=0)/tr.n*100 ;
@@ -517,13 +502,13 @@ function [sim] = simulate(veh,tr,simname,logid)
     percent_in_decel = sum(BPS>0)/tr.n*100 ;
     percent_in_coast = sum(and(BPS==0,TPS==0))/tr.n*100 ;
     percent_in_full_tps = sum(tps==1)/tr.n*100 ;
-    percent_in_gear = zeros(veh.nog,1) ;
-    for i=1:veh.nog
-        percent_in_gear(i) = sum(gear==i)/tr.n*100 ;
-    end
-    energy_spent_fuel = fuel_cons*veh.fuel_LHV ;
-    energy_spent_mech = energy_spent_fuel*veh.n_thermal ;
-    gear_shifts = sum(abs(diff(gear))) ;
+%     percent_in_gear = zeros(veh.nog,1) ;
+%     for i=1:veh.nog
+%         percent_in_gear(i) = sum(gear==i)/tr.n*100 ;
+%     end
+%     energy_spent_fuel = fuel_cons*veh.fuel_LHV ;
+%     energy_spent_mech = energy_spent_fuel*veh.n_thermal ;
+%     gear_shifts = sum(abs(diff(gear))) ;
     [~,i] = max(abs(AY)) ;
     ay_max = AY(i) ;
     ax_max = max(AX) ;
@@ -534,6 +519,8 @@ function [sim] = simulate(veh,tr,simname,logid)
         sector_v_max(i) = max(V(tr.sector==i)) ;
         sector_v_min(i) = min(V(tr.sector==i)) ;
     end
+    % --- END: REMOVED ENGINE/GEARING METRICS ---
+    
     % HUD
     disp('KPIs calculated.')
     disp('Post-processing finished.')
@@ -592,7 +579,7 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.Fz_aero.unit = 'N' ;
     sim.Fx_aero.data = Fx_aero ;
     sim.Fx_aero.unit = 'N' ;
-    sim.Fx_eng.data = Fx_eng ;
+    sim.Fx_eng.data = Fx_eng ; % This will just be zeros
     sim.Fx_eng.unit = 'N' ;
     sim.Fx_roll.data = Fx_roll ;
     sim.Fx_roll.unit = 'N' ;
@@ -600,20 +587,24 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.Fz_mass.unit = 'N' ;
     sim.Fz_total.data = Fz_total ;
     sim.Fz_total.unit = 'N' ;
-    sim.wheel_torque.data = wheel_torque ;
-    sim.wheel_torque.unit = 'N.m' ;
-    sim.engine_torque.data = engine_torque ;
-    sim.engine_torque.unit = 'N.m' ;
-    sim.engine_power.data = engine_power ;
-    sim.engine_power.unit = 'W' ;
-    sim.engine_speed.data = engine_speed ;
-    sim.engine_speed.unit = 'rpm' ;
-    sim.gear.data = gear ;
-    sim.gear.unit = [] ;
-    sim.fuel_cons.data = fuel_cons ;
-    sim.fuel_cons.unit = 'kg' ;
-    sim.fuel_cons_total.data = fuel_cons_total ;
-    sim.fuel_cons_total.unit = 'kg' ;
+    
+    % --- START: REMOVED ENGINE/GEARING RESULTS ---
+%     sim.wheel_torque.data = wheel_torque ;
+%     sim.wheel_torque.unit = 'N.m' ;
+%     sim.engine_torque.data = engine_torque ;
+%     sim.engine_torque.unit = 'N.m' ;
+%     sim.engine_power.data = engine_power ;
+%     sim.engine_power.unit = 'W' ;
+%     sim.engine_speed.data = engine_speed ;
+%     sim.engine_speed.unit = 'rpm' ;
+%     sim.gear.data = gear ;
+%     sim.gear.unit = [] ;
+%     sim.fuel_cons.data = fuel_cons ;
+%     sim.fuel_cons.unit = 'kg' ;
+%     sim.fuel_cons_total.data = fuel_cons_total ;
+%     sim.fuel_cons_total.unit = 'kg' ;
+    % --- END: REMOVED ENGINE/GEARING RESULTS ---
+    
     sim.laptime.data = laptime ;
     sim.laptime.unit = 's' ;
     sim.sector_time.data = sector_time ;
@@ -628,20 +619,28 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.percent_in_coast.unit = '%' ;
     sim.percent_in_full_tps.data = percent_in_full_tps ;
     sim.percent_in_full_tps.unit = '%' ;
-    sim.percent_in_gear.data = percent_in_gear ;
-    sim.percent_in_gear.unit = '%' ;
+    
+    % --- START: REMOVED ENGINE/GEARING RESULTS ---
+%     sim.percent_in_gear.data = percent_in_gear ;
+%     sim.percent_in_gear.unit = '%' ;
+    % --- END: REMOVED ENGINE/GEARING RESULTS ---
+    
     sim.v_min.data = min(V) ;
     sim.v_min.unit = 'm/s' ;
     sim.v_max.data = max(V) ;
     sim.v_max.unit = 'm/s' ;
     sim.v_ave.data = mean(V) ;
     sim.v_ave.unit = 'm/s' ;
-    sim.energy_spent_fuel.data = energy_spent_fuel ;
-    sim.energy_spent_fuel.unit = 'J' ;
-    sim.energy_spent_mech.data = energy_spent_mech ;
-    sim.energy_spent_mech.unit = 'J' ;
-    sim.gear_shifts.data = gear_shifts ;
-    sim.gear_shifts.unit = [] ;
+    
+    % --- START: REMOVED ENGINE/GEARING RESULTS ---
+%     sim.energy_spent_fuel.data = energy_spent_fuel ;
+%     sim.energy_spent_fuel.unit = 'J' ;
+%     sim.energy_spent_mech.data = energy_spent_mech ;
+%     sim.energy_spent_mech.unit = 'J' ;
+%     sim.gear_shifts.data = gear_shifts ;
+%     sim.gear_shifts.unit = [] ;
+    % --- END: REMOVED ENGINE/GEARING RESULTS ---
+    
     sim.lat_acc_max.data = ay_max ;
     sim.lat_acc_max.unit = 'm/s/s' ;
     sim.long_acc_max.data = ax_max ;
@@ -659,7 +658,6 @@ function [sim] = simulate(veh,tr,simname,logid)
     fprintf(logid,'%s\n','Simulation completed.') ;
     
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
     
@@ -684,8 +682,13 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
     
     %% speed solution
     if r==0 % straight (limited by engine speed limit or drag)
-        % checking for engine speed limit
-        v = veh.v_max ;
+        
+        % --- START: MODIFIED FOR "INFINITE POWER" ---
+        % checking for engine speed limit - REMOVED, SET TO Inf
+        v = inf ; % Car is no longer limited by v_max on straights
+        % v = veh.v_max ; % Original line
+        % --- END: MODIFIED FOR "INFINITE POWER" ---
+        
         tps = 1 ; % full throttle
         bps = 0 ; % 0 brake
     else % corner (may be limited by engine, drag or cornering ability)
@@ -718,8 +721,12 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
         else
             error(['Discriminant <0 at point index: ',num2str(p)])
         end
-        % checking for engine speed limit
-        v = min([v,veh.v_max]) ;
+        
+        % --- START: MODIFIED FOR "INFINITE POWER" ---
+        % checking for engine speed limit - REMOVED
+        % v = min([v,veh.v_max]) ; % Original line
+        % --- END: MODIFIED FOR "INFINITE POWER" ---
+        
         %% adjusting speed for drag force compensation
         adjust_speed = true ;
         while adjust_speed
@@ -740,16 +747,29 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
             if ax_drag<=0 % need throttle to compensate for drag
                 % max long acc available from tyres
                 ax_tyre_max_acc = 1/M*(mux+dmx*(Nx-Wd))*Wd*driven_wheels ;
-                % getting power limit from engine
-                ax_power_limit = 1/M*(interp1(veh.vehicle_speed,veh.factor_power*veh.fx_engine,v)) ;
+                
+                % --- START: MODIFIED FOR "INFINITE POWER" ---
+                % getting power limit from engine - REMOVED
+                % ax_power_limit = 1/M*(interp1(veh.vehicle_speed,veh.factor_power*veh.fx_engine,v)) ;
+                
                 % available combined lat acc at ax_net==0 => ax_tyre==-ax_drag
                 ay = ay_max*sqrt(1-(ax_drag/ax_tyre_max_acc)^2) ; % friction ellipse
                 % available combined long acc at ay_needed
                 ax_acc = ax_tyre_max_acc*sqrt(1-(ay_needed/ay_max)^2) ; % friction ellipse
-                % getting tps value
-                scale = min([-ax_drag,ax_acc])/ax_power_limit ;
-                tps = max([min([1,scale]),0]) ; % making sure its positive
+                
+                % getting tps value - SIMPLIFIED
+                % scale = min([-ax_drag,ax_acc])/ax_power_limit ;
+                % tps = max([min([1,scale]),0]) ; % making sure its positive
+                
+                % With infinite power, we just check if grip is sufficient
+                if -ax_drag <= ax_acc
+                    tps = 1; % "throttle" is 1, but power is infinite
+                else
+                    tps = 0; % Not even infinite power can overcome this (this case shouldn't be hit)
+                end
                 bps = 0 ; % setting brake pressure to 0
+                % --- END: MODIFIED FOR "INFINITE POWER" ---
+                
             else % need brake to compensate for drag
                 % max long acc available from tyres
                 ax_tyre_max_dec = -1/M*(mux+dmx*(Nx-(Wz-Aero_Df)/4))*(Wz-Aero_Df) ;
@@ -772,7 +792,6 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
     end
     
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [v_next,ax,ay,tps,bps,overshoot] = vehicle_model_comb(veh,tr,v,v_max_next,j,mode)
     
@@ -855,18 +874,25 @@ function [v_next,ax,ay,tps,bps,overshoot] = vehicle_model_comb(veh,tr,v,v_max_ne
     %% calculating driver inputs
     
     if ax_needed>=0 % need tps
-        % max pure long acc available from driven tyres
+        
+        % --- START: CODE MODIFIED FOR "INFINITE POWER" ---
+        
+        % max pure long acc available from driven tyres (Original Formula)
         ax_tyre_max = 1/M*(mux+dmx*(Nx-Wd))*Wd*driven_wheels ;
         % max combined long acc available from driven tyres
         ax_tyre = ax_tyre_max*ellipse_multi ;
-        % getting power limit from engine
-        ax_power_limit = 1/M*(interp1(veh.vehicle_speed,veh.factor_power*veh.fx_engine,v,'linear',0)) ;
-        % getting tps value
-        scale = min([ax_tyre,ax_needed]/ax_power_limit) ;
-        tps = max([min([1,scale]),0]) ; % making sure its positive
+        
+        % *** ENGINE POWER LIMIT REMOVED ***
+        
+        % final long acc command is the minimum of grip and overshoot
+        ax_com = min(ax_tyre, ax_needed) ;
+        
+        % Set driver inputs for logging (doesn't affect calculation)
+        tps = 1 ; % Set to 1 (full throttle)
         bps = 0 ; % setting brake pressure to 0
-        % final long acc command
-        ax_com = tps*ax_power_limit ;
+        
+        % --- END: CODE MODIFIED FOR "INFINITE POWER" ---
+        
     else % need braking
         % max pure long acc available from all tyres
         ax_tyre_max = -1/M*(mux+dmx*(Nx-(Wz-Aero_Df)/4))*(Wz-Aero_Df) ;
@@ -887,10 +913,14 @@ function [v_next,ax,ay,tps,bps,overshoot] = vehicle_model_comb(veh,tr,v,v_max_ne
     ax = ax_com+ax_drag ;
     % next speed value
     v_next = sqrt(v^2+2*mode*ax*tr.dx(j)) ;
+    
+    % --- START: MODIFIED FOR "INFINITE POWER" ---
     % correcting tps for full throttle when at v_max on straights
-    if tps>0 && v/veh.v_max>=0.999
-        tps = 1 ;
-    end
+    % This check is no longer needed as v_max is Inf on straights
+%     if tps>0 && v/veh.v_max>=0.999
+%         tps = 1 ;
+%     end
+    % --- END: MODIFIED FOR "INFINITE POWER" ---
     
     %% checking for overshoot
     
@@ -907,7 +937,6 @@ function [v_next,ax,ay,tps,bps,overshoot] = vehicle_model_comb(veh,tr,v,v_max_ne
     end
     
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [j_next,j] = next_point(j,j_max,mode,tr_config)
     switch mode
@@ -947,13 +976,11 @@ function [j_next,j] = next_point(j,j_max,mode,tr_config)
             end
     end
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [i_rest] = other_points(i,i_max)
     i_rest = (1:i_max)' ;
     i_rest(i) = [] ;
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [flag] = flag_update(flag,j,k,prg_size,logid,prg_pos)
     % current flag state
@@ -968,7 +995,6 @@ function [flag] = flag_update(flag,j,k,prg_size,logid,prg_pos)
         progress_bar(flag,prg_size,logid,prg_pos) ;
     end
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [] = progress_bar(flag,prg_size,logid,prg_pos)
     % current flag state
@@ -992,7 +1018,6 @@ function [] = progress_bar(flag,prg_size,logid,prg_pos)
     fprintf(logid,'%s\n',' [%]') ;
     fseek(logid,0,'eof') ; % continue at end of file
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [] = disp_logo(logid)
     lg = [...
@@ -1006,7 +1031,6 @@ function [] = disp_logo(logid)
     disp(lg) % command window
     fprintf(logid,'%s',[lg,repmat(newline,size(lg,1),1)].') ; % log file
 end
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [] = export_report(veh,tr,sim,freq,logid)
     % frequency
