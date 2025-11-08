@@ -43,7 +43,6 @@ fclose('all') ;
 %% Starting timer
 tic
 %% Filenames
-
 % --- START: UI TO GET FILE INPUTS ---
 disp('Choose Track')
 [track_file, track_path] = uigetfile('*.mat', 'Select the Track File (OpenTRACK)');
@@ -475,26 +474,18 @@ function [sim] = simulate(veh,tr,simname,logid)
     fprintf(logid,'%s\n','Steering angles calculated.') ;
     fprintf(logid,'%s\n','Vehicle slip angles calculated.') ;
     
-    % --- START: REMOVED ENGINE/GEARING METRICS ---
-    % calculating engine metrics
-%     wheel_torque = TPS.*interp1(veh.vehicle_speed,veh.wheel_torque,V,'linear','extrap') ;
-%     Fx_eng = wheel_torque/veh.tyre_radius ;
-%     engine_torque = TPS.*interp1(veh.vehicle_speed,veh.engine_torque,V,'linear','extrap') ;
-%     engine_power = TPS.*interp1(veh.vehicle_speed,veh.engine_power,V,'linear','extrap') ;
-%     engine_speed = interp1(veh.vehicle_speed,veh.engine_speed,V,'linear','extrap') ;
-%     gear = interp1(veh.vehicle_speed,veh.gear,V,'nearest','extrap') ;
-%     fuel_cons = cumsum(wheel_torque/veh.tyre_radius.*tr.dx/veh.n_primary/veh.n_gearbox/veh.n_final/veh.n_thermal/veh.fuel_LHV) ;
-%     fuel_cons_total = fuel_cons(end) ;
-    
-    % Set Fx_eng to zero (or a non-existent value) for logging if needed, 
-    % but it's better to remove it from results. We will set it to zero
-    % in case any other code (that we haven't seen) relies on it.
-    % We will also remove it from the 'sim' structure below.
-    Fx_eng = zeros(tr.n,1); 
-    
+    % calculating motor metrics
+    wheel_torque = TPS.*interp1(veh.vehicle_speed,veh.wheel_torque,V,'linear','extrap') ;
+    Fx_eng = wheel_torque/veh.tyre_radius ;
+    engine_torque = TPS.*interp1(veh.vehicle_speed,veh.engine_torque,V,'linear','extrap') ;
+    engine_power = TPS.*interp1(veh.vehicle_speed,veh.engine_power,V,'linear','extrap') ;
+    engine_speed = interp1(veh.vehicle_speed,veh.engine_speed,V,'linear','extrap') ;
+    gear = interp1(veh.vehicle_speed,veh.gear,V,'nearest','extrap') ;
+    fuel_cons = cumsum(wheel_torque/veh.tyre_radius.*tr.dx/veh.n_primary/veh.n_gearbox/veh.n_final/veh.n_thermal/veh.fuel_LHV) ;
+    fuel_cons_total = fuel_cons(end) ;
     % HUD
-    disp('Engine metrics calculation skipped.')
-    fprintf(logid,'%s\n','Engine metrics calculation skipped.') ;
+    disp('Motor metrics calculated.')
+    fprintf(logid,'%s\n','Motor metrics calculated.') ;
     
     % calculating kpis
     percent_in_corners = sum(tr.r~=0)/tr.n*100 ;
@@ -502,13 +493,13 @@ function [sim] = simulate(veh,tr,simname,logid)
     percent_in_decel = sum(BPS>0)/tr.n*100 ;
     percent_in_coast = sum(and(BPS==0,TPS==0))/tr.n*100 ;
     percent_in_full_tps = sum(tps==1)/tr.n*100 ;
-%     percent_in_gear = zeros(veh.nog,1) ;
-%     for i=1:veh.nog
-%         percent_in_gear(i) = sum(gear==i)/tr.n*100 ;
-%     end
-%     energy_spent_fuel = fuel_cons*veh.fuel_LHV ;
-%     energy_spent_mech = energy_spent_fuel*veh.n_thermal ;
-%     gear_shifts = sum(abs(diff(gear))) ;
+    percent_in_gear = zeros(veh.nog,1) ;
+    for i=1:veh.nog
+        percent_in_gear(i) = sum(gear==i)/tr.n*100 ;
+    end
+    energy_spent_fuel = fuel_cons*veh.fuel_LHV ;
+    energy_spent_mech = energy_spent_fuel*veh.n_thermal ;
+    gear_shifts = sum(abs(diff(gear))) ;
     [~,i] = max(abs(AY)) ;
     ay_max = AY(i) ;
     ax_max = max(AX) ;
@@ -519,8 +510,6 @@ function [sim] = simulate(veh,tr,simname,logid)
         sector_v_max(i) = max(V(tr.sector==i)) ;
         sector_v_min(i) = min(V(tr.sector==i)) ;
     end
-    % --- END: REMOVED ENGINE/GEARING METRICS ---
-    
     % HUD
     disp('KPIs calculated.')
     disp('Post-processing finished.')
@@ -579,7 +568,7 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.Fz_aero.unit = 'N' ;
     sim.Fx_aero.data = Fx_aero ;
     sim.Fx_aero.unit = 'N' ;
-    sim.Fx_eng.data = Fx_eng ; % This will just be zeros
+    sim.Fx_eng.data = Fx_eng ;
     sim.Fx_eng.unit = 'N' ;
     sim.Fx_roll.data = Fx_roll ;
     sim.Fx_roll.unit = 'N' ;
@@ -587,24 +576,20 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.Fz_mass.unit = 'N' ;
     sim.Fz_total.data = Fz_total ;
     sim.Fz_total.unit = 'N' ;
-    
-    % --- START: REMOVED ENGINE/GEARING RESULTS ---
-%     sim.wheel_torque.data = wheel_torque ;
-%     sim.wheel_torque.unit = 'N.m' ;
-%     sim.engine_torque.data = engine_torque ;
-%     sim.engine_torque.unit = 'N.m' ;
-%     sim.engine_power.data = engine_power ;
-%     sim.engine_power.unit = 'W' ;
-%     sim.engine_speed.data = engine_speed ;
-%     sim.engine_speed.unit = 'rpm' ;
-%     sim.gear.data = gear ;
-%     sim.gear.unit = [] ;
-%     sim.fuel_cons.data = fuel_cons ;
-%     sim.fuel_cons.unit = 'kg' ;
-%     sim.fuel_cons_total.data = fuel_cons_total ;
-%     sim.fuel_cons_total.unit = 'kg' ;
-    % --- END: REMOVED ENGINE/GEARING RESULTS ---
-    
+    sim.wheel_torque.data = wheel_torque ;
+    sim.wheel_torque.unit = 'N.m' ;
+    sim.engine_torque.data = engine_torque ;
+    sim.engine_torque.unit = 'N.m' ;
+    sim.engine_power.data = engine_power ;
+    sim.engine_power.unit = 'W' ;
+    sim.engine_speed.data = engine_speed ;
+    sim.engine_speed.unit = 'rpm' ;
+    sim.gear.data = gear ;
+    sim.gear.unit = [] ;
+    sim.fuel_cons.data = fuel_cons ;
+    sim.fuel_cons.unit = 'kg' ;
+    sim.fuel_cons_total.data = fuel_cons_total ;
+    sim.fuel_cons_total.unit = 'kg' ;
     sim.laptime.data = laptime ;
     sim.laptime.unit = 's' ;
     sim.sector_time.data = sector_time ;
@@ -619,28 +604,20 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.percent_in_coast.unit = '%' ;
     sim.percent_in_full_tps.data = percent_in_full_tps ;
     sim.percent_in_full_tps.unit = '%' ;
-    
-    % --- START: REMOVED ENGINE/GEARING RESULTS ---
-%     sim.percent_in_gear.data = percent_in_gear ;
-%     sim.percent_in_gear.unit = '%' ;
-    % --- END: REMOVED ENGINE/GEARING RESULTS ---
-    
+    sim.percent_in_gear.data = percent_in_gear ;
+    sim.percent_in_gear.unit = '%' ;
     sim.v_min.data = min(V) ;
     sim.v_min.unit = 'm/s' ;
     sim.v_max.data = max(V) ;
     sim.v_max.unit = 'm/s' ;
     sim.v_ave.data = mean(V) ;
     sim.v_ave.unit = 'm/s' ;
-    
-    % --- START: REMOVED ENGINE/GEARING RESULTS ---
-%     sim.energy_spent_fuel.data = energy_spent_fuel ;
-%     sim.energy_spent_fuel.unit = 'J' ;
-%     sim.energy_spent_mech.data = energy_spent_mech ;
-%     sim.energy_spent_mech.unit = 'J' ;
-%     sim.gear_shifts.data = gear_shifts ;
-%     sim.gear_shifts.unit = [] ;
-    % --- END: REMOVED ENGINE/GEARING RESULTS ---
-    
+    sim.energy_spent_fuel.data = energy_spent_fuel ;
+    sim.energy_spent_fuel.unit = 'J' ;
+    sim.energy_spent_mech.data = energy_spent_mech ;
+    sim.energy_spent_mech.unit = 'J' ;
+    sim.gear_shifts.data = gear_shifts ;
+    sim.gear_shifts.unit = [] ;
     sim.lat_acc_max.data = ay_max ;
     sim.lat_acc_max.unit = 'm/s/s' ;
     sim.long_acc_max.data = ax_max ;
@@ -682,13 +659,8 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
     
     %% speed solution
     if r==0 % straight (limited by engine speed limit or drag)
-        
-        % --- START: MODIFIED FOR "INFINITE POWER" ---
-        % checking for engine speed limit - REMOVED, SET TO Inf
-        v = inf ; % Car is no longer limited by v_max on straights
-        % v = veh.v_max ; % Original line
-        % --- END: MODIFIED FOR "INFINITE POWER" ---
-        
+        % checking for engine speed limit
+        v = veh.v_max ;
         tps = 1 ; % full throttle
         bps = 0 ; % 0 brake
     else % corner (may be limited by engine, drag or cornering ability)
@@ -721,12 +693,8 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
         else
             error(['Discriminant <0 at point index: ',num2str(p)])
         end
-        
-        % --- START: MODIFIED FOR "INFINITE POWER" ---
-        % checking for engine speed limit - REMOVED
-        % v = min([v,veh.v_max]) ; % Original line
-        % --- END: MODIFIED FOR "INFINITE POWER" ---
-        
+        % checking for engine speed limit
+        v = min([v,veh.v_max]) ;
         %% adjusting speed for drag force compensation
         adjust_speed = true ;
         while adjust_speed
@@ -747,29 +715,16 @@ function [v,tps,bps] = vehicle_model_lat(veh,tr,p)
             if ax_drag<=0 % need throttle to compensate for drag
                 % max long acc available from tyres
                 ax_tyre_max_acc = 1/M*(mux+dmx*(Nx-Wd))*Wd*driven_wheels ;
-                
-                % --- START: MODIFIED FOR "INFINITE POWER" ---
-                % getting power limit from engine - REMOVED
-                % ax_power_limit = 1/M*(interp1(veh.vehicle_speed,veh.factor_power*veh.fx_engine,v)) ;
-                
+                % getting power limit from motor
+                ax_power_limit = 1/M*(interp1(veh.vehicle_speed,veh.factor_power*veh.fx_engine,v)) ;
                 % available combined lat acc at ax_net==0 => ax_tyre==-ax_drag
                 ay = ay_max*sqrt(1-(ax_drag/ax_tyre_max_acc)^2) ; % friction ellipse
                 % available combined long acc at ay_needed
                 ax_acc = ax_tyre_max_acc*sqrt(1-(ay_needed/ay_max)^2) ; % friction ellipse
-                
-                % getting tps value - SIMPLIFIED
-                % scale = min([-ax_drag,ax_acc])/ax_power_limit ;
-                % tps = max([min([1,scale]),0]) ; % making sure its positive
-                
-                % With infinite power, we just check if grip is sufficient
-                if -ax_drag <= ax_acc
-                    tps = 1; % "throttle" is 1, but power is infinite
-                else
-                    tps = 0; % Not even infinite power can overcome this (this case shouldn't be hit)
-                end
+                % getting tps value
+                scale = min([-ax_drag,ax_acc])/ax_power_limit ;
+                tps = max([min([1,scale]),0]) ; % making sure its positive
                 bps = 0 ; % setting brake pressure to 0
-                % --- END: MODIFIED FOR "INFINITE POWER" ---
-                
             else % need brake to compensate for drag
                 % max long acc available from tyres
                 ax_tyre_max_dec = -1/M*(mux+dmx*(Nx-(Wz-Aero_Df)/4))*(Wz-Aero_Df) ;
@@ -874,25 +829,18 @@ function [v_next,ax,ay,tps,bps,overshoot] = vehicle_model_comb(veh,tr,v,v_max_ne
     %% calculating driver inputs
     
     if ax_needed>=0 % need tps
-        
-        % --- START: CODE MODIFIED FOR "INFINITE POWER" ---
-        
-        % max pure long acc available from driven tyres (Original Formula)
+        % max pure long acc available from driven tyres
         ax_tyre_max = 1/M*(mux+dmx*(Nx-Wd))*Wd*driven_wheels ;
         % max combined long acc available from driven tyres
         ax_tyre = ax_tyre_max*ellipse_multi ;
-        
-        % *** ENGINE POWER LIMIT REMOVED ***
-        
-        % final long acc command is the minimum of grip and overshoot
-        ax_com = min(ax_tyre, ax_needed) ;
-        
-        % Set driver inputs for logging (doesn't affect calculation)
-        tps = 1 ; % Set to 1 (full throttle)
+        % getting power limit from motor
+        ax_power_limit = 1/M*(interp1(veh.vehicle_speed,veh.factor_power*veh.fx_engine,v,'linear',0)) ;
+        % getting tps value
+        scale = min([ax_tyre,ax_needed]/ax_power_limit) ;
+        tps = max([min([1,scale]),0]) ; % making sure its positive
         bps = 0 ; % setting brake pressure to 0
-        
-        % --- END: CODE MODIFIED FOR "INFINITE POWER" ---
-        
+        % final long acc command
+        ax_com = tps*ax_power_limit ;
     else % need braking
         % max pure long acc available from all tyres
         ax_tyre_max = -1/M*(mux+dmx*(Nx-(Wz-Aero_Df)/4))*(Wz-Aero_Df) ;
@@ -913,14 +861,10 @@ function [v_next,ax,ay,tps,bps,overshoot] = vehicle_model_comb(veh,tr,v,v_max_ne
     ax = ax_com+ax_drag ;
     % next speed value
     v_next = sqrt(v^2+2*mode*ax*tr.dx(j)) ;
-    
-    % --- START: MODIFIED FOR "INFINITE POWER" ---
     % correcting tps for full throttle when at v_max on straights
-    % This check is no longer needed as v_max is Inf on straights
-%     if tps>0 && v/veh.v_max>=0.999
-%         tps = 1 ;
-%     end
-    % --- END: MODIFIED FOR "INFINITE POWER" ---
+    if tps>0 && v/veh.v_max>=0.999
+        tps = 1 ;
+    end
     
     %% checking for overshoot
     
