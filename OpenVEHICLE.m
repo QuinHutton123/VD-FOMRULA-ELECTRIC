@@ -39,8 +39,9 @@ fclose('all') ;
 [fn, fp] = uigetfile({'*.xlsx','Excel Files (*.xlsx)'; '*.*','All Files'}, ...
                      'Select vehicle Excel file');
 % Check if the user clicked Cancel
-if isequal(fn,0)
-    error('No file selected');
+if isequal(fn,0) || isequal(fp,0)
+    disp('File selection cancelled. Exiting script.');
+    return;
 end
 % Build full file name
 filename = fullfile(fp, fn);
@@ -48,7 +49,7 @@ filename = fullfile(fp, fn);
 
 %% Reading vehicle file
 info = read_info(filename,'Info') ;
-% data = read_torque_curve(filename,'Torque Curve') ; % --- REMOVED ---
+data = read_torque_curve(filename,'Torque Curve') ;
 %% Getting variables
 % info
 name = table2array(info(1,2)) ;
@@ -90,25 +91,20 @@ mu_y_M = str2double(table2array(info(i,2))) ; i = i+1 ; % [1/kg]
 sens_y = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
 CF = str2double(table2array(info(i,2))) ; i = i+1 ; % [N/deg]
 CR = str2double(table2array(info(i,2))) ; i = i+1 ; % [N/deg]
-
-% --- START: ENGINE/GEARING VARIABLES REMOVED ---
-% engine (Lines 81-86) - REMOVED
-% factor_power = str2double(table2array(info(i,2))) ; i = i+1 ;
-% n_thermal = str2double(table2array(info(i,2))) ; i = i+1 ;
-% fuel_LHV = str2double(table2array(info(i,2))) ; i = i+1 ; % [J/kg]
-i = i+3; % Skipping the 3 engine lines
-% drivetrain (Lines 88-96) - REMOVED (Except 'drive')
+% engine (renamed to motor, but variable names kept for compatibility)
+factor_power = str2double(table2array(info(i,2))) ; i = i+1 ;
+n_thermal = str2double(table2array(info(i,2))) ; i = i+1 ;
+fuel_LHV = str2double(table2array(info(i,2))) ; i = i+1 ; % [J/kg]
+% drivetrain
 drive = table2array(info(i,2)) ; i = i+1 ;
-% shift_time = str2double(table2array(info(i,2))) ; i = i+1 ; % [s]
-% n_primary = str2double(table2array(info(i,2))) ; i = i+1 ;
-% n_final = str2double(table2array(info(i,2))) ; i = i+1 ;
-% n_gearbox = str2double(table2array(info(i,2))) ; i = i+1 ;
-% ratio_primary = str2double(table2array(info(i,2))) ; i = i+1 ;
-% ratio_final = str2double(table2array(info(i,2))) ; i = i+1 ;
-% ratio_gearbox = str2double(table2array(info(i:end,2))) ;
-% nog = length(ratio_gearbox) ;
-% --- END: ENGINE/GEARING VARIABLES REMOVED ---
-
+shift_time = str2double(table2array(info(i,2))) ; i = i+1 ; % [s]
+n_primary = str2double(table2array(info(i,2))) ; i = i+1 ;
+n_final = str2double(table2array(info(i,2))) ; i = i+1 ;
+n_gearbox = str2double(table2array(info(i,2))) ; i = i+1 ;
+ratio_primary = str2double(table2array(info(i,2))) ; i = i+1 ;
+ratio_final = str2double(table2array(info(i,2))) ; i = i+1 ;
+ratio_gearbox = str2double(table2array(info(i:end,2))) ;
+nog = length(ratio_gearbox) ;
 %% HUD
 [folder_status,folder_msg] = mkdir('OpenVEHICLE Vehicles') ;
 vehname = "OpenVEHICLE Vehicles/OpenVEHICLE_"+name+"_"+type ;
@@ -145,28 +141,98 @@ b = -df*L ; % distance of rear axle from center of mass [mm]
 C = 2*[CF,CF+CR;CF*a,CF*a+CR*b] ; % steering model matrix
 % HUD
 disp('Steering model generated successfully.')
-
-% --- START: DRIVELINE MODEL REPLACED ---
 %% Driveline Model
-% Engine/gearing logic removed.
-% Create a speed vector for aero/tire/GGV calculations, up to 100 km/h.
-v_min = 0; % [m/s]
-v_max = 100 / 3.6; % [m/s] (This is 100 km/h)
-dv = 0.5/3.6; % Step size of 0.5 km/h
-vehicle_speed = (v_min:dv:v_max)';
-if isempty(vehicle_speed)
-    vehicle_speed = [v_min; v_max]; % Failsafe
-elseif vehicle_speed(end) ~= v_max
-    vehicle_speed = [vehicle_speed; v_max]; % Make sure it includes the exact max speed
+
+% --- REVERTED: Back to original multi-gear logic ---
+if nog <= 0
+    error('No gear ratios found in Excel file.');
 end
-disp('Driveline model skipped (Engine/Gearing removed).')
-% --- END: DRIVELINE MODEL REPLACED ---
+% --- END REVERT ---
 
+% fetching engine curves
+en_speed_curve = table2array(data(:,1)) ; % [rpm]
+en_torque_curve = table2array(data(:,2)) ; % [N*m]
+en_power_curve = en_torque_curve.*en_speed_curve*2*pi/60 ; % [W]
+% memory preallocation
+% wheel speed per gear for every engine speed value
+wheel_speed_gear = zeros(length(en_speed_curve),nog) ;
+% vehicle speed per gear for every engine speed value
+vehicle_speed_gear = zeros(length(en_speed_curve),nog) ;
+% wheel torque per gear for every engine speed value
+wheel_torque_gear = zeros(length(en_torque_curve),nog) ;
+% calculating values for each gear and engine speed
+for i=1:nog
+    wheel_speed_gear(:,i) = en_speed_curve/ratio_primary/ratio_gearbox(i)/ratio_final ;
+    vehicle_speed_gear(:,i) = wheel_speed_gear(:,i)*2*pi/60*tyre_radius ;
+    wheel_torque_gear(:,i) = en_torque_curve*ratio_primary*ratio_gearbox(i)*ratio_final*n_primary*n_gearbox*n_final ;
+end
+% minimum and maximum vehicle speeds
+v_min = min(vehicle_speed_gear,[],'all') ;
+v_max = max(vehicle_speed_gear,[],'all') ;
+% new speed vector for fine meshing
+dv = 0.5/3.6 ;
+vehicle_speed = linspace(v_min,v_max,(v_max-v_min)/dv)' ;
+if isempty(vehicle_speed) % Add failsafe for v_max = v_min
+    vehicle_speed = v_min;
+else
+    % memory preallocation
+    % gear
+    gear = zeros(length(vehicle_speed),1) ;
+    % engine tractive force
+    fx_engine = zeros(length(vehicle_speed),1) ;
+    % engine tractive force per gear
+    fx = zeros(length(vehicle_speed),nog) ;
+    % optimising gear selection and calculating tractive force
+    for i=1:length(vehicle_speed)
+        % going through the gears
+        for j=1:nog
+            fx(i,j) = interp1(vehicle_speed_gear(:,j),wheel_torque_gear(:,j)/tyre_radius,vehicle_speed(i),'linear',0) ;
+        end
+        % getting maximum tractive force and gear
+        [fx_engine(i),gear(i)] = max(fx(i,:)) ;
+    end
+    % adding values for 0 speed to vectors for interpolation purposes at low speeds
+    vehicle_speed = [0;vehicle_speed] ;
+    gear = [gear(1);gear] ;
+    fx_engine = [fx_engine(1);fx_engine] ;
+end
 
-% --- START: SHIFTING POINTS SECTION REMOVED ---
-% (Section lines 164-184 completely deleted)
-disp('Shift points calculation skipped.')
-% --- END: SHIFTING POINTS SECTION REMOVED ---
+% final vectors
+% engine speed
+engine_speed = ratio_final*ratio_gearbox(gear)*ratio_primary.*vehicle_speed/tyre_radius*60/2/pi ;
+% wheel torque
+wheel_torque = fx_engine*tyre_radius ;
+% engine torque
+engine_torque = wheel_torque/ratio_final./ratio_gearbox(gear)/ratio_primary/n_primary/n_gearbox/n_final ;
+% engine power
+engine_power = engine_torque.*engine_speed*2*pi/60 ;
+% HUD
+disp('Driveline model generated successfully.')
+%% Shifting Points and Rev Drops
+
+% --- REVERTED: Back to original multi-gear logic ---
+% (Removed single-speed check)
+% finding gear changes
+gear_change = diff(gear) ; % gear change will appear as 1
+% getting speed right before and after gear change
+gear_change = logical([gear_change;0]+[0;gear_change]) ;
+% getting engine speed at gear change
+engine_speed_gear_change = engine_speed(gear_change) ;
+% gettin g shift points
+shift_points = engine_speed_gear_change(1:2:length(engine_speed_gear_change)) ;
+% getting arrive points
+arrive_points = engine_speed_gear_change(2:2:length(engine_speed_gear_change)) ;
+% calculating revdrops
+rev_drops = shift_points-arrive_points ;
+% creating shifting table
+rownames = cell(nog-1,1) ;
+for i=1:nog-1
+    rownames(i) = {[num2str(i,'%d'),'-',num2str(i+1,'%d')]} ;
+end
+shifting = table(shift_points,arrive_points,rev_drops,'RowNames',rownames) ;
+% HUD
+disp('Shift points calculated successfully.')
+% --- END REVERT ---
 
 %% Force model
 % gravitational constant
@@ -240,24 +306,14 @@ for i=1:length(v)
     ax_tyre_max_acc = 1/M*(mux+dmx*(Nx-Wd))*Wd*driven_wheels ;
     % max long acc available from tyres
     ax_tyre_max_dec = -1/M*(mux+dmx*(Nx-(Wz-Aero_Df)/4))*(Wz-Aero_Df) ;
-    
-    % --- START: GGV ENGINE LIMIT REMOVED ---
-    % (Lines 247-248 deleted)
-    % ax_power_limit = 1/M*(interp1(vehicle_speed,factor_power*fx_engine,v(i))) ;
-    % ax_power_limit = ax_power_limit*ones(N,1) ;
-    % --- END: GGV ENGINE LIMIT REMOVED ---
-    
+    % getting power limit from motor
+    ax_power_limit = 1/M*(interp1(vehicle_speed,factor_power*fx_engine,v(i))) ;
+    ax_power_limit = ax_power_limit*ones(N,1) ;
     % lat acc vector
     ay = ay_max*cosd(linspace(0,180,N))' ;
     % long acc vector
     ax_tyre_acc = ax_tyre_max_acc*sqrt(1-(ay/ay_max).^2) ; % friction ellipse
-    
-    % --- START: GGV ENGINE LIMIT REMOVED ---
-    % (Line 252 modified)
-    % ax_acc = min(ax_tyre_acc,ax_power_limit)+ax_drag ; % Original line
-    ax_acc = ax_tyre_acc + ax_drag ; % New grip-limited line
-    % --- END: GGV ENGINE LIMIT REMOVED ---
-    
+    ax_acc = min(ax_tyre_acc,ax_power_limit)+ax_drag ; % limiting by motor power
     ax_dec = ax_tyre_max_dec*sqrt(1-(ay/ay_max).^2)+ax_drag ; % friction ellipse
     % saving GGV map
     GGV(i,:,1) = [ax_acc',ax_dec(2:end)'] ;
@@ -267,32 +323,6 @@ end
 % HUD
 disp('GGV map generated successfully.')
 %% Saving vehicle
-% --- ADDED DUMMY VARIABLES FOR SAVE ---
-% The save function saves all variables in the workspace.
-% We must create empty/zero variables for those that OpenLAP expects.
-nog = 0;
-factor_power = 1; 
-n_thermal = 0;
-fuel_LHV = 0;
-shift_time = 0;
-n_primary = 0;
-n_final = 0;
-n_gearbox = 0;
-ratio_primary = 0;
-ratio_final = 0;
-ratio_gearbox = [];
-shifting = table();
-en_speed_curve = [];
-en_torque_curve = [];
-en_power_curve = [];
-gear = [];
-fx_engine = [];
-engine_speed = [];
-wheel_torque = [];
-engine_torque = [];
-engine_power = [];
-% --- END DUMMY VARIABLES ---
-
 % saving
 save(vehname+".mat")
 %% Plot
@@ -306,37 +336,58 @@ Ypos = floor((SS(4)-H)/2) ;
 f = figure('Name','Vehicle Model','Position',[Xpos,Ypos,W,H]) ;
 sgtitle(name)
 % rows and columns
-% --- MODIFIED: Changed layout from 4x2 to 1x2 ---
-rows = 1 ;
+rows = 4 ;
 cols = 2 ;
-% --- END MODIFICATION ---
-
-% --- START: ENGINE/GEARING PLOTS REMOVED ---
-% (Engine curve subplot and gearing subplot completely deleted)
-% --- END: ENGINE/GEARING PLOTS REMOVED ---
-
-% --- MODIFIED: Traction model subplot position changed ---
-% (Changed from [5,7] to 1)
+% engine curves
 subplot(rows,cols,1)
-% --- END MODIFICATION ---
 hold on
-title('Traction Model (Grip-Limited)')
-% (Engine force lines 308-309 deleted)
+title('Motor Curve') % <-- Changed title
+xlabel('Motor Speed [rpm]') % <-- Changed label
+yyaxis left
+plot(en_speed_curve,factor_power*en_torque_curve)
+ylabel('Motor Torque [Nm]') % <-- Changed label
+grid on
+if ~isempty(en_speed_curve)
+    xlim([en_speed_curve(1),en_speed_curve(end)])
+end
+yyaxis right
+plot(en_speed_curve,factor_power*en_power_curve/745.7)
+ylabel('Motor Power [Hp]') % <-- Changed label
+% gearing
+subplot(rows,cols,3)
+hold on
+title('Gearing')
+xlabel('Speed [m/s]')
+yyaxis left
+plot(vehicle_speed,engine_speed)
+ylabel('Motor Speed [rpm]') % <-- Changed label
+grid on
+xlim([vehicle_speed(1),vehicle_speed(end)])
+yyaxis right
+plot(vehicle_speed,gear)
+ylabel('Gear [-]')
+if ~isempty(gear)
+    ylim([gear(1)-1,max(gear(end)+1, 2)]) % <-- Adjusted YLim
+end
+% traction model
+subplot(rows,cols,[5,7])
+hold on
+title('Traction Model')
+plot(vehicle_speed,factor_power*fx_engine,'k','LineWidth',4)
+plot(vehicle_speed,min([factor_power*fx_engine';fx_tyre']),'r','LineWidth',2)
 plot(vehicle_speed,-fx_aero)
 plot(vehicle_speed,-fx_roll)
 plot(vehicle_speed,fx_tyre)
-% (Gear loop line 313 deleted)
+for i=1:nog
+    plot(vehicle_speed(2:end),fx(:,i),'k--')
+end
 grid on
 xlabel('Speed [m/s]')
 ylabel('Force [N]')
 xlim([vehicle_speed(1),vehicle_speed(end)])
-% (Legend line 316 modified)
-legend({'Aero drag','Rolling resistance','Max tyre tractive force'},'Location','southoutside')
-
-% --- MODIFIED: GGV map subplot position changed ---
-% (Changed from [2,4,6,8] to 2)
-subplot(rows,cols,2)
-% --- END MODIFICATION ---
+legend({'Motor tractive force','Final tractive force','Aero drag','Rolling resistance','Max tyre tractive force','Motor tractive force per gear'},'Location','southoutside') % <-- Changed labels
+% ggv map
+subplot(rows,cols,[2,4,6,8])
 hold on
 title('GGV Map')
 surf(GGV(:,:,2),GGV(:,:,1),GGV(:,:,3))
@@ -360,10 +411,37 @@ disp('Vehicle generated successfully.')
 % diary
 diary('off') ;
 %% Functions
-% --- START: read_torque_curve FUNCTION REMOVED ---
-% (Function lines 339-362 deleted)
-% --- END: read_torque_curve FUNCTION REMOVED ---
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [data] = read_torque_curve(workbookFile,sheetName,startRow,endRow)
+    % Input handling
+    % If no sheet is specified, read first sheet
+    if nargin == 1 || isempty(sheetName)
+        sheetName = 1;
+    end
+    % If row start and end points are not specified, define defaults
+    if nargin <= 3
+        startRow = 2;
+        endRow = 10000;
+    end
+    % Setup the Import Options
+    opts = spreadsheetImportOptions("NumVariables", 2);
+    % Specify sheet and range
+    opts.Sheet = sheetName;
+    opts.DataRange = "A" + startRow(1) + ":B" + endRow(1);
+    % Specify column names and types
+    opts.VariableNames = ["Engine_Speed_rpm", "Torque_Nm"];
+    opts.VariableTypes = ["double", "double"];
+    % Setup rules for import
+    opts.MissingRule = "omitrow";
+    opts = setvaropts(opts, [1, 2], "TreatAsMissing", '');
+    % Import the data
+    data = readtable(workbookFile, opts, "UseExcel", false);
+    for idx = 2:length(startRow)
+        opts.DataRange = "A" + startRow(idx) + ":B" + endRow(idx);
+        tb = readtable(workbookFile, opts, "UseExcel", false);
+        data = [data; tb]; %#ok<AGROW>
+    end
+end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [data] = read_info(workbookFile,sheetName,startRow,endRow)
     % Input handling
