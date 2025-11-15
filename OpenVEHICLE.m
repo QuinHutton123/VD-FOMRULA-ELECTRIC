@@ -50,7 +50,7 @@ filename = fullfile(fp, fn);
 %% Reading vehicle file
 info = read_info(filename,'Info') ;
 data = read_torque_curve(filename,'Torque Curve') ;
-aeroconf = read_info(filename,'Aero') ;
+
 %% Getting variables
 % info
 name = table2array(info(1,2)) ;
