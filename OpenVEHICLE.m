@@ -50,6 +50,7 @@ filename = fullfile(fp, fn);
 %% Reading vehicle file
 info = read_info(filename,'Info') ;
 data = read_torque_curve(filename,'Torque Curve') ;
+
 %% Getting variables
 % info
 name = table2array(info(1,2)) ;
@@ -62,10 +63,25 @@ df = str2double(table2array(info(i,2)))/100 ; i = i+1 ; % [-]
 % wheelbase
 L = str2double(table2array(info(i,2)))/1000 ; i = i+1 ; % [m]
 % steering rack ratio
-rack = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
+rack = str2double(table2array(info(i,2))) ; i = i+3 ; % [-] $ Skips fixed Cl/Cd values.
 % aerodynamics
-Cl = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
-Cd = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
+while true
+    pitchconfig = str2double(input('Enter the Pitch Configuration (1-4): ', 's'));
+    if ~isnan(pitchconfig) && pitchconfig >= 1 && pitchconfig <= 4 && mod(pitchconfig,1) == 0
+        break;
+    end
+    disp('Invalid input. Please enter an integer between 1 and 4.');
+end
+Cldata = readcell(filename, 'Sheet', 'Aero', 'Range', 'B:B');
+Cddata = readcell(filename, 'Sheet', 'Aero', 'Range', 'C:C');
+PitchFdata = readcell(filename, 'Sheet', 'Aero', 'Range', 'D:D');
+PitchRdata = readcell(filename, 'Sheet', 'Aero', 'Range', 'E:E');
+
+Cl = Cldata{pitchconfig + 1 , 1} ; % [-]
+Cd = Cddata{pitchconfig + 1, 1} ; % [-]
+% TODO: Include Front/Rear Pitch to Vehicle Sim
+PitchFront = PitchFdata{pitchconfig + 1, 1};
+PitchRear = PitchRdata{pitchconfig + 1, 1};
 factor_Cl = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
 factor_Cd = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
 da = str2double(table2array(info(i,2)))/100 ; i = i+1 ; % [-]
