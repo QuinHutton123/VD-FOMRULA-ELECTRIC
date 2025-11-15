@@ -50,6 +50,7 @@ filename = fullfile(fp, fn);
 %% Reading vehicle file
 info = read_info(filename,'Info') ;
 data = read_torque_curve(filename,'Torque Curve') ;
+aeroconf = read_info(filename,'Aero') ;
 %% Getting variables
 % info
 name = table2array(info(1,2)) ;
@@ -64,8 +65,16 @@ L = str2double(table2array(info(i,2)))/1000 ; i = i+1 ; % [m]
 % steering rack ratio
 rack = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
 % aerodynamics
-Cl = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
-Cd = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
+pitchconfig = str2double(input('Enter the Pitch Configuration (1-4): ', 's'));
+Cldata = readcell(filename, 'Sheet', 'Aero', 'Range', 'B:B');
+Cddata = readcell(filename, 'Sheet', 'Aero', 'Range', 'C:C');
+PitchFdata = readcell(filename, 'Sheet', 'Aero', 'Range', 'D:D');
+PitchRdata = readcell(filename, 'Sheet', 'Aero', 'Range', 'E:E');
+
+Cl = Cldata{pitchconfig +1 , 1} ; i = i+1 ; % [-]
+Cd = Cddata{pitchconfig + 1, 1} ; i = i+1 ; % [-]
+PitchFront = PitchFdata{pitchconfig + 1, 1};
+PitchRear = PitchRdata{pitchconfig + 1, 1};
 factor_Cl = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
 factor_Cd = str2double(table2array(info(i,2))) ; i = i+1 ; % [-]
 da = str2double(table2array(info(i,2)))/100 ; i = i+1 ; % [-]
