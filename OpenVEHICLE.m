@@ -154,7 +154,6 @@ disp('Braking model generated successfully.')
 %% Steering Model
 a = (1-df)*L ; % distance of front axle from center of mass [mm]
 b = -df*L ; % distance of rear axle from center of mass [mm]
-C = 2*[CF,CF+CR;CF*a,CF*a+CR*b] ; % steering model matrix
 % HUD
 disp('Steering model generated successfully.')
 %% Driveline Model

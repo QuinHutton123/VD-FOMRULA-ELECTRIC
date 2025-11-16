@@ -171,17 +171,31 @@ xlim(xlimit)
 ylabel('input [%]')
 grid on
 ylim([-10,110])
-% steering inputs
+
+
+%% steering inputs & yaw motion
 subplot(rows,cols,[9,10])
+
+% --- Plot angles on left axis (with custom colors) ---
+yyaxis left
 hold on
-plot(tr.x,sim.steering.data)
-plot(tr.x,sim.delta.data)
-plot(tr.x,sim.beta.data)
-legend({'Steering wheel','Steering \delta','Vehicle slip angle \beta'},'Location',loc)
+plot(tr.x,sim.steering.data, 'b-') % Blue solid line
+plot(tr.x,sim.delta.data, 'r-') % Red solid line
+plot(tr.x,sim.beta.data, 'g-') % Green solid line
+ylabel('Angle [deg]')
+hold off
+
+% --- Plot yaw rate on right axis (with custom color) ---
+yyaxis right
+plot(tr.x,sim.yaw_rate.data, 'k:') % Black dotted line
+ylabel('Yaw Rate [deg/s]')
+
+% --- Add legend, labels, etc. ---
+legend({'Steering wheel','Steering \delta','Vehicle slip angle \beta', 'Yaw Rate'},'Location',loc)
 xlabel('Distance [m]')
 xlim(xlimit)
-ylabel('angle [deg]')
 grid on
+
 % ggv circle
 subplot(rows,cols,[11,13])
 hold on
@@ -207,6 +221,25 @@ grid on
 axis equal
 % saving figure
 savefig(simname+".fig")
+
+%% Body Slip Angle vs. Distance
+figure('Name', 'Body Slip Angle') % Creates a new figure window
+plot(tr.x, sim.beta.data)
+title('Vehicle Slip Angle (beta) vs. Distance')
+xlabel('Distance [m]')
+ylabel('Angle [deg]')
+grid on
+%% Yaw Rate vs. Distance
+figure('Name', 'Yaw Rate') % Creates another new figure window
+plot(tr.x, sim.yaw_rate.data)
+title('Yaw Rate vs. Distance')
+xlabel('Distance [m]')
+ylabel('Yaw Rate [deg/s]')
+grid on
+
+% HUD
+disp('Plots created and saved.')
+fprintf(logid,'%s\n','Plots created and saved.') ;
 % HUD
 disp('Plots created and saved.')
 fprintf(logid,'%s\n','Plots created and saved.') ;
@@ -455,24 +488,85 @@ function [sim] = simulate(veh,tr,simname,logid)
     disp('Forces calculated.')
     fprintf(logid,'%s\n','Forces calculated.') ;
     
-    % calculating yaw motion, vehicle slip angle and steering input
-    yaw_rate = V.*tr.r ;
-    delta = zeros(tr.n,1) ;
-    beta = zeros(tr.n,1) ;
-    for i=1:tr.n
-        B = [M*V(i)^2*tr.r(i)+M*g*sind(tr.bank(i));0] ;
-        sol = veh.C\B ;
-        delta(i) = sol(1)+atand(veh.L*tr.r(i)) ;
-        beta(i) = sol(2) ;
+    %% calculating yaw motion, vehicle slip angle and steering input
+    % Vehicle properties (loaded from 'veh' structure)
+L = veh.L ;
+CF = veh.CF ; % Front cornering stiffness [N/deg]
+CR = veh.CR ; % Rear cornering stiffness [N/deg]
+a = veh.a ;   % Distance from CG to front axle [m]
+b = veh.b ;   % Distance from CG to rear axle [m]
+% --- Initializing solved variables ---
+r_solved = zeros(tr.n,1) ; % Yaw rate [deg/s]
+delta = zeros(tr.n,1) ;    % Front steering angle [deg]
+beta = zeros(tr.n,1) ;     % Vehicle slip angle [deg]
+
+% The main loop to solve the steady-state steering equations (2-DOF Bicycle Model)
+for i=1:tr.n
+    V_i = V(i) ; % Current velocity
+    
+    % 0. Calculate Curvature (kappa = 1/R)
+    if abs(tr.r(i)) < 1E-6 % Check if Radius (tr.r) is near infinite (straight)
+        kappa = 0 ; % Curvature = 0
+    else
+        kappa = 1 / tr.r(i) ; % Curvature = 1 / Radius [1/m]
     end
-    steer = delta*veh.rack ;
-    % HUD
-    disp('Yaw motion calculated.')
-    disp('Steering angles calculated.')
-    disp('Vehicle slip angles calculated.')
-    fprintf(logid,'%s\n','Yaw motion calculated.') ;
-    fprintf(logid,'%s\n','Steering angles calculated.') ;
-    fprintf(logid,'%s\n','Vehicle slip angles calculated.') ;
+
+    % 1. Calculate the required Steering Angle (Delta) based on track geometry
+    if kappa == 0
+        delta(i) = 0 ;
+    else
+        % Delta = atand(L * Curvature)
+        delta(i) = atand(L * kappa) ; 
+    end
+    
+    % Only solve the full matrix if the car is moving
+    if V_i > 0.1 
+        
+        % --- 2. Calculate Cornering and Stability Derivatives (Per Axle Forces) ---
+        Yb = (CF+CR) ;
+        Yr = (1/V_i)*(a*CF-CR*b) ;
+        Ys = -CF ;
+        
+        Nb = (a*CF-b*CR) ;
+        Nr = (1/V_i)*((a*a)*CF + (b*b)*CR) ;
+        Ns = -a*CF ;
+        
+        % --- 3. Setup the 2x2 Matrix System ---
+
+        % These are the two equations being solved:
+        % 1. (M*V - Yr)*r - Yb*beta = Ys*delta - M*g*sind(bank) <--
+        % Obtained by rearanging the Fundamental equation of page 150 + The
+        % banking component added in this code. 
+        % 2. (-Nr)*r - Nb*beta      = Ns*delta
+        
+        % The matrix contains the coefficients of beta and r
+        YAW_BODY = [-Yb, M*V_i - Yr ;  % Coefficients from Eq. 1
+              -Nb, -Nr] ;              % Coefficients from Eq. 2
+        
+        % The vector contains the known inputs
+        DELTA_SOLVED = [Ys * delta(i) - M*g*sind(tr.bank(i)) ; % Right-hand side of Eq. 1
+                 Ns * delta(i) ] ;                             % Right-hand side of Eq. 2
+        
+        % --- 4. Solve for [beta; r] ---
+        sol = YAW_BODY \ DELTA_SOLVED ;
+        
+        % Store results
+        beta(i) = sol(1) ;   % [deg]
+        r_solved(i) = sol(2) ; % [deg/s]
+    
+    else
+        beta(i) = 0 ;
+        r_solved(i) = 0 ;
+    end
+end
+% --- FINAL RESULT ASSIGNMENT ---
+% Yaw rate is stored in degrees/second as solved.
+yaw_rate = r_solved ; 
+% Final steering wheel angle (Rack is usually a ratio)
+steer = delta * veh.rack ;
+
+
+    %%
     
     % calculating motor metrics
     wheel_torque = TPS.*interp1(veh.vehicle_speed,veh.wheel_torque,V,'linear','extrap') ;
@@ -560,6 +654,7 @@ function [sim] = simulate(veh,tr,simname,logid)
     sim.brake_force.unit = 'N' ;
     sim.steering.data = steer ;
     sim.steering.unit = 'deg' ;
+    
     sim.delta.data = delta ;
     sim.delta.unit = 'deg' ;
     sim.beta.data = beta ;
