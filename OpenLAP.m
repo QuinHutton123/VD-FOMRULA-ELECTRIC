@@ -488,83 +488,115 @@ function [sim] = simulate(veh,tr,simname,logid)
     disp('Forces calculated.')
     fprintf(logid,'%s\n','Forces calculated.') ;
     
-    %% calculating yaw motion, vehicle slip angle and steering input
-    % Vehicle properties (loaded from 'veh' structure)
-L = veh.L ;
-CF = veh.CF ; % Front cornering stiffness [N/deg]
-CR = veh.CR ; % Rear cornering stiffness [N/deg]
-a = veh.a ;   % Distance from CG to front axle [m]
-b = veh.b ;   % Distance from CG to rear axle [m]
-% --- Initializing solved variables ---
-r_solved = zeros(tr.n,1) ; % Yaw rate [deg/s]
-delta = zeros(tr.n,1) ;    % Front steering angle [deg]
-beta = zeros(tr.n,1) ;     % Vehicle slip angle [deg]
-
-% The main loop to solve the steady-state steering equations (2-DOF Bicycle Model)
-for i=1:tr.n
-    V_i = V(i) ; % Current velocity
+ %% calculating yaw motion, vehicle slip angle and steering input
+        % Vehicle properties (loaded from 'veh' structure)
+        % --- CONVERT LENGTH UNITS ---
+        % All vehicle file lengths (L, a, b) are in [m]
+    L_m = veh.L; 
+    a_m = veh.a; 
+    b_m = abs(veh.b); 
     
-    % 0. Calculate Curvature (kappa = 1/R)
-    if abs(tr.r(i)) < 1E-6 % Check if Radius (tr.r) is near infinite (straight)
-        kappa = 0 ; % Curvature = 0
-    else
-        kappa = 1 / tr.r(i) ; % Curvature = 1 / Radius [1/m]
-    end
-
-    % 1. Calculate the required Steering Angle (Delta) based on track geometry
-    if kappa == 0
-        delta(i) = 0 ;
-    else
-        % Delta = atand(L * Curvature)
-        delta(i) = atand(L * kappa) ; 
+    M = veh.M ;   % Vehicle mass [kg]
+    g = 9.81;     % Gravity [m/s^2]
+    
+    % --- UNIT CONVERSION (CRITICAL) ---
+    % Convert cornering stiffness from [N/deg] to [N/rad] for physics calculations
+    CF_rad = veh.CF * (180/pi); % Front cornering stiffness [N/rad]
+    CR_rad = veh.CR * (180/pi); % Rear cornering stiffness [N/rad]
+    
+    % --- Initializing solved variables ---
+    r_solved = zeros(tr.n,1) ; % Yaw rate [deg/s]
+    delta = zeros(tr.n,1) ;    % Front wheel steering angle [deg]
+    beta = zeros(tr.n,1) ;     % Vehicle slip angle [deg]
+    
+    % The main loop to solve the steady-state steering equations (2-DOF Bicycle Model)
+    for i=1:tr.n
+        V_i = V(i) ; % Current velocity
+        
+        % 0. Get Curvature
+        % We know tr.r(i) is already curvature (kappa) in [1/m]
+        
+        % --- 1. Calculate the geometric Steering Angle (Delta) ---
+        if abs(tr.r(i)) < 1E-6 % Check if curvature is near zero (straight)
+            delta_rad = 0; % [rad]
+        else
+            % Directly use curvature tr.r(i) and wheelbase in meters
+            delta_rad = atan(L_m * tr.r(i)) ; % [rad]
+        end
+        
+        % Store the steering angle in degrees for your output
+        delta(i) = rad2deg(delta_rad);
+             
+        % Only solve the full matrix if the car is moving
+        if V_i > 0.1 
+            
+            % --- 2. Calculate Cornering and Stability Derivatives (using RADIAN stiffnesses and METRIC lengths) ---
+            Yb = (CF_rad + CR_rad) ;                   % [N/rad]
+            Yr = (1/V_i)*(a_m*CF_rad - b_m*CR_rad) ;     % [N*s/rad]
+            Ys = -CF_rad ;                           % [N/rad]
+            
+            Nb = (a_m*CF_rad - b_m*CR_rad) ;               % [N*m/rad]
+            Nr = (1/V_i)*((a_m^2)*CF_rad + (b_m^2)*CR_rad) ; % [N*m*s/rad]
+            Ns = -a_m*CF_rad;                         % [N*m/rad]
+            
+            % Get bank angle in RADIANS
+            bank_rad = deg2rad(tr.bank(i));
+            
+            % --- 3. Setup the 2x2 Matrix System ---
+            
+            % The matrix A in A*x = B
+            YAW_BODY = [Yb, Yr - M*V_i;
+                        Nb, Nr];   
+            
+            % The vector B (using radian inputs)
+            DELTA_SOLVED = [-Ys * delta_rad + M*g*sin(bank_rad) ; 
+                            -Ns * delta_rad ] ;  
+            
+            % --- 4. Solve for [beta; r] ---
+            sol = YAW_BODY \ DELTA_SOLVED ;
+            
+            % Store results and convert back to degrees
+            beta(i) = rad2deg(sol(1)) ;   % [deg]
+            r_solved(i) = rad2deg(sol(2)) ; % [deg/s]
+          
+        
+        else
+            beta(i) = 0 ;
+            r_solved(i) = 0 ;
+        end
     end
     
-    % Only solve the full matrix if the car is moving
-    if V_i > 0.1 
-        
-        % --- 2. Calculate Cornering and Stability Derivatives (Per Axle Forces) ---
-        Yb = (CF+CR) ;
-        Yr = (1/V_i)*(a*CF-CR*b) ;
-        Ys = -CF ;
-        
-        Nb = (a*CF-b*CR) ;
-        Nr = (1/V_i)*((a*a)*CF + (b*b)*CR) ;
-        Ns = -a*CF ;
-        
-        % --- 3. Setup the 2x2 Matrix System ---
+% --- CONSTANT VALUE PRINTOUTS ---
+V_Crit = sqrt((((a_m*CF_rad-b_m*CR_rad)^2)+(CF_rad)*(((a_m^2)*(CF_rad))+((b_m^2)*(CR_rad))))/((a_m*CF_rad-b_m*CR_rad)*M));
+fprintf('V Crit = %.2f m/s\n', V_Crit)
+fprintf('a = %.3f m\n', a_m)
+fprintf('b = %.3f m\n', b_m)
+fprintf('CF = %.2f N/rad\n', CF_rad)
+fprintf('CR = %.2f N/rad\n', CR_rad)
 
-        % These are the two equations being solved:
-        % 1. (M*V - Yr)*r - Yb*beta = Ys*delta - M*g*sind(bank) <--
-        % Obtained by rearanging the Fundamental equation of page 150 + The
-        % banking component added in this code. 
-        % 2. (-Nr)*r - Nb*beta      = Ns*delta
-        
-        % The matrix contains the coefficients of beta and r
-        YAW_BODY = [-Yb, M*V_i - Yr ;  % Coefficients from Eq. 1
-              -Nb, -Nr] ;              % Coefficients from Eq. 2
-        
-        % The vector contains the known inputs
-        DELTA_SOLVED = [Ys * delta(i) - M*g*sind(tr.bank(i)) ; % Right-hand side of Eq. 1
-                 Ns * delta(i) ] ;                             % Right-hand side of Eq. 2
-        
-        % --- 4. Solve for [beta; r] ---
-        sol = YAW_BODY \ DELTA_SOLVED ;
-        
-        % Store results
-        beta(i) = sol(1) ;   % [deg]
-        r_solved(i) = sol(2) ; % [deg/s]
-    
-    else
-        beta(i) = 0 ;
-        r_solved(i) = 0 ;
-    end
+    % --- FINAL RESULT PRINTOUT (EXAMPLE AT INDEX 100) ---
+idx_to_display = 100; 
+if idx_to_display <= tr.n % Check if index exists
+    % Get the values from that index
+    V_display = V(idx_to_display);
+    beta_display = beta(idx_to_display);       % in [deg]
+    r_display = r_solved(idx_to_display);    % in [deg/s]
+    delta_display = delta(idx_to_display);     % in [deg]
+    % 3. Print the formatted results
+    fprintf('\n--- RESULTS AT INDEX %d ---\n', idx_to_display);
+    fprintf('Speed: %.1f m/s\n', V_display);
+    fprintf('Steering Angle: %.4f degrees\n', delta_display);
+    fprintf('Body slip angle: %.4f degrees\n', beta_display);
+    fprintf('Yaw rate: %.4f deg/s\n', r_display);
+else
+    fprintf('\n--- Index %d is out of bounds (Track has %d points) ---\n', idx_to_display, tr.n);
 end
-% --- FINAL RESULT ASSIGNMENT ---
-% Yaw rate is stored in degrees/second as solved.
-yaw_rate = r_solved ; 
-% Final steering wheel angle (Rack is usually a ratio)
-steer = delta * veh.rack ;
 
+    % --- FINAL RESULT ASSIGNMENT ---
+    % Yaw rate is stored in degrees/second as solved.
+    yaw_rate = r_solved ; 
+    % Final steering wheel angle (Rack is usually a ratio)
+    steer = delta * veh.rack ;
 
     %%
     
