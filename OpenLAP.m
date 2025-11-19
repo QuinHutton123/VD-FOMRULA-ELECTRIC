@@ -488,10 +488,9 @@ function [sim] = simulate(veh,tr,simname,logid)
     disp('Forces calculated.')
     fprintf(logid,'%s\n','Forces calculated.') ;
     
- %% calculating yaw motion, vehicle slip angle and steering input
-        % Vehicle properties (loaded from 'veh' structure)
-        % --- CONVERT LENGTH UNITS ---
-        % All vehicle file lengths (L, a, b) are in [m]
+%% Calculating Yaw Motion, Vehicle Slip Angle and Steering Input
+    % Vehicle properties (loaded from 'veh' structure)
+    % --- CONVERT LENGTH UNITS ---
     L_m = veh.L; 
     a_m = veh.a; 
     b_m = abs(veh.b); 
@@ -505,9 +504,11 @@ function [sim] = simulate(veh,tr,simname,logid)
     CR_rad = veh.CR * (180/pi); % Rear cornering stiffness [N/rad]
     
     % --- Initializing solved variables ---
-    r_solved = zeros(tr.n,1) ; % Yaw rate [deg/s]
-    delta = zeros(tr.n,1) ;    % Front wheel steering angle [deg]
-    beta = zeros(tr.n,1) ;     % Vehicle slip angle [deg]
+    r_solved = zeros(tr.n,1) ;    % Yaw rate [deg/s]
+    delta = zeros(tr.n,1) ;       % Front wheel steering angle [deg]
+    beta = zeros(tr.n,1) ;        % Vehicle slip angle [deg]
+    alpha_front = zeros(tr.n,1) ; % Front Slip Angle [deg]
+    alpha_rear = zeros(tr.n,1) ;  % Rear Slip Angle [deg]
     
     % The main loop to solve the steady-state steering equations (2-DOF Bicycle Model)
     for i=1:tr.n
@@ -530,14 +531,14 @@ function [sim] = simulate(veh,tr,simname,logid)
         % Only solve the full matrix if the car is moving
         if V_i > 0.1 
             
-            % --- 2. Calculate Cornering and Stability Derivatives (using RADIAN stiffnesses and METRIC lengths) ---
+            % --- 2. Calculate Cornering and Stability Derivatives ---
             Yb = (CF_rad + CR_rad) ;                   % [N/rad]
-            Yr = (1/V_i)*(a_m*CF_rad - b_m*CR_rad) ;     % [N*s/rad]
-            Ys = -CF_rad ;                           % [N/rad]
+            Yr = (1/V_i)*(a_m*CF_rad - b_m*CR_rad) ;   % [N*s/rad]
+            Ys = -CF_rad ;                             % [N/rad]
             
-            Nb = (a_m*CF_rad - b_m*CR_rad) ;               % [N*m/rad]
+            Nb = (a_m*CF_rad - b_m*CR_rad) ;                 % [N*m/rad]
             Nr = (1/V_i)*((a_m^2)*CF_rad + (b_m^2)*CR_rad) ; % [N*m*s/rad]
-            Ns = -a_m*CF_rad;                         % [N*m/rad]
+            Ns = -a_m*CF_rad;                           % [N*m/rad]
             
             % Get bank angle in RADIANS
             bank_rad = deg2rad(tr.bank(i));
@@ -555,48 +556,74 @@ function [sim] = simulate(veh,tr,simname,logid)
             % --- 4. Solve for [beta; r] ---
             sol = YAW_BODY \ DELTA_SOLVED ;
             
-            % Store results and convert back to degrees
-            beta(i) = rad2deg(sol(1)) ;   % [deg]
-            r_solved(i) = rad2deg(sol(2)) ; % [deg/s]
-          
+            % --- 5. Extract Solved Values (IN RADIANS) ---
+            beta_rad = sol(1);
+            r_rad    = sol(2);
+            
+            % Store main outputs in degrees
+            beta(i) = rad2deg(beta_rad) ;   % [deg]
+            r_solved(i) = rad2deg(r_rad) ;  % [deg/s]
+
+            % --- 6. Calculate Slip Angles (Using Radians) ---
+            % Front slip = beta + (a*r)/V - delta
+            af_rad = beta_rad + (a_m * r_rad)/V_i - delta_rad;
+            
+            % Rear slip = beta - (b*r)/V
+            ar_rad = beta_rad - (b_m * r_rad)/V_i;
+
+            % Store Slip Angles in degrees
+            alpha_front(i) = rad2deg(af_rad);
+            alpha_rear(i)  = rad2deg(ar_rad);
         
         else
             beta(i) = 0 ;
             r_solved(i) = 0 ;
+            alpha_front(i) = 0;
+            alpha_rear(i) = 0;
         end
     end
     
 % --- CONSTANT VALUE PRINTOUTS ---
 V_Crit = sqrt((((a_m*CF_rad-b_m*CR_rad)^2)+(CF_rad)*(((a_m^2)*(CF_rad))+((b_m^2)*(CR_rad))))/((a_m*CF_rad-b_m*CR_rad)*M));
 fprintf('V Crit = %.2f m/s\n', V_Crit)
-fprintf('a = %.3f m\n', a_m)
-fprintf('b = %.3f m\n', b_m)
-fprintf('CF = %.2f N/rad\n', CF_rad)
-fprintf('CR = %.2f N/rad\n', CR_rad)
 
-    % --- FINAL RESULT PRINTOUT (EXAMPLE AT INDEX 100) ---
+% --- FINAL RESULT PRINTOUT (EXAMPLE AT INDEX 100) ---
 idx_to_display = 100; 
-if idx_to_display <= tr.n % Check if index exists
-    % Get the values from that index
-    V_display = V(idx_to_display);
-    beta_display = beta(idx_to_display);       % in [deg]
-    r_display = r_solved(idx_to_display);    % in [deg/s]
-    delta_display = delta(idx_to_display);     % in [deg]
-    % 3. Print the formatted results
+if idx_to_display <= tr.n 
     fprintf('\n--- RESULTS AT INDEX %d ---\n', idx_to_display);
-    fprintf('Speed: %.1f m/s\n', V_display);
-    fprintf('Steering Angle: %.4f degrees\n', delta_display);
-    fprintf('Body slip angle: %.4f degrees\n', beta_display);
-    fprintf('Yaw rate: %.4f deg/s\n', r_display);
-else
-    fprintf('\n--- Index %d is out of bounds (Track has %d points) ---\n', idx_to_display, tr.n);
+    fprintf('Speed: %.1f m/s\n', V(idx_to_display));
+    fprintf('Steering Angle: %.4f degrees\n', delta(idx_to_display));
+    fprintf('Body slip angle: %.4f degrees\n', beta(idx_to_display));
+    fprintf('Front Slip angle: %.4f degrees\n', alpha_front(idx_to_display));
+    fprintf('Rear Slip angle: %.4f degrees\n', alpha_rear(idx_to_display));
 end
 
-    % --- FINAL RESULT ASSIGNMENT ---
-    % Yaw rate is stored in degrees/second as solved.
-    yaw_rate = r_solved ; 
-    % Final steering wheel angle (Rack is usually a ratio)
-    steer = delta * veh.rack ;
+% --- FINAL RESULT ASSIGNMENT ---
+yaw_rate = r_solved ; 
+steer = delta * veh.rack ;
+
+%% --- PLOTTING SLIP ANGLES ---
+figure('Name', 'Slip Angles vs Distance', 'Color', 'w');
+
+% Determine X-axis (Distance tr.s or Index)
+if isfield(tr, 's')
+    x_data = tr.s;
+    x_lab = 'Distance [m]';
+else
+    x_data = 1:tr.n;
+    x_lab = 'Index';
+end
+
+plot(x_data, alpha_front, 'r', 'LineWidth', 1.5, 'DisplayName', 'Front Slip (\alpha_f)'); hold on;
+plot(x_data, alpha_rear, 'b', 'LineWidth', 1.5, 'DisplayName', 'Rear Slip (\alpha_r)');
+yline(0, 'k--'); % Zero line
+
+title('Tire Slip Angles vs Distance');
+xlabel(x_lab);
+ylabel('Slip Angle [deg]');
+legend('show');
+grid on;
+axis tight;
 
     %%
     
